@@ -5,17 +5,24 @@ Main application window with menu bar, panels, and status bar.
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QFileDialog,
-    QMessageBox, QAction, QStatusBar, QSplitter
+    QMessageBox, QAction, QStatusBar, QSplitter, QDockWidget,
+    QToolBar, QApplication
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
 from pathlib import Path
 
 from gui.signal_selector import SignalSelector
 from gui.graph_panel import GraphPanel
 from gui.dialogs import AboutDialog, UserGuideDialog
+from gui.cursor_manager import CursorManager
+from gui.statistics_widget import StatisticsWidget
+from gui.theme_manager import ThemeManager
 from data import BLFReader, DBCParser, SignalProcessor
 from utils import Workspace
 from utils.config import *
+from utils.csv_exporter import CSVExporter
+from utils.partial_exporter import PartialDataExporter
 
 
 class MainWindow(QMainWindow):
@@ -37,10 +44,18 @@ class MainWindow(QMainWindow):
         # UI components
         self.signal_selector = None
         self.graph_panel = None
+        self.cursor_manager = None
+        self.statistics_widget = None
+        self.stats_dock = None
+        
+        # Theme state
+        self.is_dark_mode = False
         
         self.init_ui()
         self.create_menus()
+        self.create_toolbar()
         self.create_status_bar()
+        self.create_statistics_dock()
         
         # Set minimum size
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
@@ -58,6 +73,7 @@ class MainWindow(QMainWindow):
         # Left panel - Signal selector
         self.signal_selector = SignalSelector(max_signals=MAX_SIGNALS)
         self.signal_selector.selection_changed.connect(self.on_signal_selection_changed)
+        self.signal_selector.graph_count_changed.connect(self.on_graph_count_changed)
         self.signal_selector.setMinimumWidth(SIGNAL_PANEL_WIDTH)
         splitter.addWidget(self.signal_selector)
         
@@ -72,6 +88,10 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout()
         layout.addWidget(splitter)
         central_widget.setLayout(layout)
+        
+        # Initialize cursor manager
+        self.cursor_manager = CursorManager(self.graph_panel.plot_widgets)
+        self.cursor_manager.cursor_moved.connect(self.on_cursor_moved)
     
     def create_menus(self):
         """Create menu bar and menus."""
@@ -104,10 +124,22 @@ class MainWindow(QMainWindow):
         
         file_menu.addSeparator()
         
-        export_action = QAction('&Export Graphs...', self)
+        # Export submenu
+        export_menu = file_menu.addMenu('E&xport')
+        
+        export_action = QAction('Export &Graphs...', self)
         export_action.setShortcut('Ctrl+E')
         export_action.triggered.connect(self.export_graphs)
-        file_menu.addAction(export_action)
+        export_menu.addAction(export_action)
+        
+        export_csv_action = QAction('Export to &CSV...', self)
+        export_csv_action.setShortcut('Ctrl+Shift+C')
+        export_csv_action.triggered.connect(self.export_to_csv)
+        export_menu.addAction(export_csv_action)
+        
+        export_time_range_action = QAction('Export &Time Range...', self)
+        export_time_range_action.triggered.connect(self.export_time_range)
+        export_menu.addAction(export_time_range_action)
         
         file_menu.addSeparator()
         
@@ -118,6 +150,15 @@ class MainWindow(QMainWindow):
         
         # View menu
         view_menu = menubar.addMenu('&View')
+        
+        # Dark mode toggle
+        self.dark_mode_action = QAction('&Dark Mode', self)
+        self.dark_mode_action.setCheckable(True)
+        self.dark_mode_action.setChecked(False)
+        self.dark_mode_action.triggered.connect(self.toggle_dark_mode)
+        view_menu.addAction(self.dark_mode_action)
+        
+        view_menu.addSeparator()
         
         reset_zoom_action = QAction('&Reset Zoom', self)
         reset_zoom_action.setShortcut('Ctrl+R')
@@ -140,6 +181,29 @@ class MainWindow(QMainWindow):
         about_action = QAction('&About', self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
+    
+    def create_toolbar(self):
+        """Create toolbar with cursor controls."""
+        toolbar = QToolBar('Cursor Tools')
+        toolbar.setMovable(False)
+        self.addToolBar(Qt.TopToolBarArea, toolbar)
+        
+        # Add Cursor 1 (Green)
+        add_cursor1_action = QAction('Add Cursor 1 (Green)', self)
+        add_cursor1_action.triggered.connect(self.add_cursor_1)
+        toolbar.addAction(add_cursor1_action)
+        
+        # Add Cursor 2 (Red)
+        add_cursor2_action = QAction('Add Cursor 2 (Red)', self)
+        add_cursor2_action.triggered.connect(self.add_cursor_2)
+        toolbar.addAction(add_cursor2_action)
+        
+        toolbar.addSeparator()
+        
+        # Remove All Cursors
+        remove_cursors_action = QAction('Remove All Cursors', self)
+        remove_cursors_action.triggered.connect(self.remove_all_cursors)
+        toolbar.addAction(remove_cursors_action)
     
     def create_status_bar(self):
         """Create status bar."""
@@ -174,6 +238,20 @@ class MainWindow(QMainWindow):
         status_parts.append(f"Selected: {selected_count}/{MAX_SIGNALS}")
         
         self.status_bar.showMessage(" | ".join(status_parts))
+    
+    def create_statistics_dock(self):
+        """Create statistics dock widget."""
+        self.statistics_widget = StatisticsWidget()
+        
+        self.stats_dock = QDockWidget('Cursor Statistics', self)
+        self.stats_dock.setWidget(self.statistics_widget)
+        self.stats_dock.setAllowedAreas(Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
+        
+        # Add dock to right side
+        self.addDockWidget(Qt.RightDockWidgetArea, self.stats_dock)
+        
+        # Initially hide the statistics dock
+        self.stats_dock.hide()
     
     def open_blf_file(self):
         """Open and load a BLF file."""
@@ -314,7 +392,7 @@ class MainWindow(QMainWindow):
             if not filepath.endswith(WORKSPACE_EXTENSION):
                 filepath += WORKSPACE_EXTENSION
             
-            # Create workspace data
+            # Create workspace data with new settings
             workspace_data = Workspace.create_workspace_data(
                 blf_path=self.blf_path,
                 dbc_path=self.dbc_path,
@@ -323,7 +401,10 @@ class MainWindow(QMainWindow):
                 window_geometry={
                     'width': self.width(),
                     'height': self.height()
-                }
+                },
+                graph_count=self.graph_panel.get_current_graph_count(),
+                dark_mode=self.is_dark_mode,
+                cursor_positions=self.cursor_manager.get_cursor_positions()
             )
             
             if Workspace.save(filepath, workspace_data):
@@ -365,6 +446,18 @@ class MainWindow(QMainWindow):
                 # Refresh signal list
                 self.refresh_signal_list()
                 
+                # Restore graph count
+                if 'graph_count' in workspace_data:
+                    graph_count = workspace_data['graph_count']
+                    self.signal_selector.set_graph_count(graph_count)
+                    self.graph_panel.set_graph_count(graph_count)
+                
+                # Restore dark mode
+                if 'dark_mode' in workspace_data:
+                    should_be_dark = workspace_data['dark_mode']
+                    if should_be_dark != self.is_dark_mode:
+                        self.toggle_dark_mode()
+                
                 # Restore selected signals
                 if 'selected_signals' in workspace_data:
                     self.signal_selector.set_selected_signals(
@@ -378,6 +471,18 @@ class MainWindow(QMainWindow):
                         view_range['x_min'],
                         view_range['x_max']
                     )
+                
+                # Restore cursor positions
+                if 'cursor_positions' in workspace_data:
+                    cursor_positions = workspace_data['cursor_positions']
+                    colors = {1: '#00ff00', 2: '#ff0000'}
+                    for cursor_id, position in cursor_positions.items():
+                        cursor_id = int(cursor_id)  # JSON keys are strings
+                        if cursor_id in colors:
+                            self.cursor_manager.add_cursor(cursor_id, colors[cursor_id], position)
+                    if cursor_positions:
+                        self.stats_dock.show()
+                        self.update_statistics()
                 
                 # Restore window geometry
                 if 'window_geometry' in workspace_data:
@@ -407,3 +512,207 @@ class MainWindow(QMainWindow):
         """Show user guide dialog."""
         dialog = UserGuideDialog(self)
         dialog.exec_()
+    
+    def on_graph_count_changed(self, count: int):
+        """
+        Handle graph count change.
+        
+        Args:
+            count: New number of graphs
+        """
+        self.graph_panel.set_graph_count(count)
+        
+        # Update cursor manager with new plot widgets
+        self.cursor_manager.update_plot_widgets(self.graph_panel.plot_widgets)
+        
+        # Re-plot selected signals
+        selected_signals = self.signal_selector.get_selected_signals()
+        if selected_signals and self.signal_processor:
+            self.on_signal_selection_changed(selected_signals)
+    
+    def toggle_dark_mode(self):
+        """Toggle between dark and light mode."""
+        self.is_dark_mode = not self.is_dark_mode
+        
+        app = QApplication.instance()
+        if self.is_dark_mode:
+            ThemeManager.apply_dark_theme(app)
+        else:
+            ThemeManager.apply_light_theme(app)
+        
+        # Update graph panel theme
+        self.graph_panel.set_theme(self.is_dark_mode)
+        
+        # Update dark mode action state
+        self.dark_mode_action.setChecked(self.is_dark_mode)
+    
+    def add_cursor_1(self):
+        """Add cursor 1 (green) to all graphs."""
+        if not self.cursor_manager.has_cursor(1):
+            # Get middle of current view range
+            view_range = self.graph_panel.get_view_range()
+            position = (view_range['x_min'] + view_range['x_max']) / 2
+            
+            self.cursor_manager.add_cursor(1, '#00ff00', position)
+            self.stats_dock.show()
+            self.update_statistics()
+        else:
+            QMessageBox.information(
+                self,
+                'Cursor Exists',
+                'Cursor 1 is already active.'
+            )
+    
+    def add_cursor_2(self):
+        """Add cursor 2 (red) to all graphs."""
+        if not self.cursor_manager.has_cursor(2):
+            # Get middle of current view range, offset a bit
+            view_range = self.graph_panel.get_view_range()
+            position = (view_range['x_min'] + view_range['x_max']) / 2
+            position += (view_range['x_max'] - view_range['x_min']) * 0.1
+            
+            self.cursor_manager.add_cursor(2, '#ff0000', position)
+            self.stats_dock.show()
+            self.update_statistics()
+        else:
+            QMessageBox.information(
+                self,
+                'Cursor Exists',
+                'Cursor 2 is already active.'
+            )
+    
+    def remove_all_cursors(self):
+        """Remove all cursors from graphs."""
+        self.cursor_manager.remove_all_cursors()
+        self.stats_dock.hide()
+        self.statistics_widget.clear_statistics()
+    
+    def on_cursor_moved(self, cursor_id: int, position: float):
+        """
+        Handle cursor movement.
+        
+        Args:
+            cursor_id: ID of the cursor that moved
+            position: New position of the cursor
+        """
+        self.update_statistics()
+    
+    def update_statistics(self):
+        """Update statistics widget with current cursor positions and signal data."""
+        cursor_positions = self.cursor_manager.get_cursor_positions()
+        signal_data = self.graph_panel.get_signal_data()
+        
+        self.statistics_widget.update_statistics(cursor_positions, signal_data)
+    
+    def export_to_csv(self):
+        """Export selected signals to CSV file."""
+        signal_data = self.graph_panel.get_signal_data()
+        
+        if not signal_data:
+            QMessageBox.warning(
+                self,
+                'No Data',
+                'Please select some signals before exporting to CSV.'
+            )
+            return
+        
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            'Export to CSV',
+            '',
+            'CSV Files (*.csv);;All Files (*)'
+        )
+        
+        if filepath:
+            # Ensure .csv extension
+            if not filepath.endswith('.csv'):
+                filepath += '.csv'
+            
+            # Check if cursors are active for partial export
+            cursor_positions = self.cursor_manager.get_cursor_positions()
+            time_range = None
+            
+            if len(cursor_positions) == 2:
+                positions = sorted(cursor_positions.values())
+                reply = QMessageBox.question(
+                    self,
+                    'Export Range',
+                    'Two cursors are active. Export only the data between cursors?',
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+                if reply == QMessageBox.Yes:
+                    time_range = (positions[0], positions[1])
+            
+            # Export
+            if CSVExporter.export_signals(filepath, signal_data, time_range):
+                QMessageBox.information(
+                    self,
+                    'Success',
+                    'Data exported to CSV successfully!'
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    'Error',
+                    'Failed to export data to CSV.'
+                )
+    
+    def export_time_range(self):
+        """Export partial data (time range) to JSON file."""
+        signal_data = self.graph_panel.get_signal_data()
+        
+        if not signal_data:
+            QMessageBox.warning(
+                self,
+                'No Data',
+                'Please select some signals before exporting.'
+            )
+            return
+        
+        cursor_positions = self.cursor_manager.get_cursor_positions()
+        
+        if len(cursor_positions) < 2:
+            QMessageBox.warning(
+                self,
+                'Need Cursors',
+                'Please add two cursors to define the time range to export.'
+            )
+            return
+        
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            'Export Time Range',
+            '',
+            'JSON Files (*.json);;All Files (*)'
+        )
+        
+        if filepath:
+            # Ensure .json extension
+            if not filepath.endswith('.json'):
+                filepath += '.json'
+            
+            # Get time range from cursors
+            positions = sorted(cursor_positions.values())
+            time_range = (positions[0], positions[1])
+            
+            # Metadata
+            metadata = {
+                'blf_file': Path(self.blf_path).name if self.blf_path else '',
+                'dbc_file': Path(self.dbc_path).name if self.dbc_path else ''
+            }
+            
+            # Export
+            if PartialDataExporter.export_time_range(filepath, signal_data, time_range, metadata):
+                QMessageBox.information(
+                    self,
+                    'Success',
+                    f'Time range exported successfully!\n'
+                    f'Duration: {time_range[1] - time_range[0]:.3f}s'
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    'Error',
+                    'Failed to export time range.'
+                )

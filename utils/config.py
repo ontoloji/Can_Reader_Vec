@@ -5,7 +5,7 @@ Application constants and settings.
 
 # Application information
 APP_NAME = "CAN Data Viewer"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 # Graph settings
 MAX_SIGNALS = 5

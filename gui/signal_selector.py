@@ -5,7 +5,7 @@ Left panel for selecting CAN messages and signals.
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem,
-    QPushButton, QLabel, QMessageBox
+    QPushButton, QLabel, QMessageBox, QSpinBox, QHBoxLayout
 )
 from PyQt5.QtCore import pyqtSignal, Qt
 from typing import List, Dict, Any, Optional
@@ -16,6 +16,8 @@ class SignalSelector(QWidget):
     
     # Signal emitted when selection changes
     selection_changed = pyqtSignal(list)
+    # Signal emitted when graph count changes
+    graph_count_changed = pyqtSignal(int)
     
     def __init__(self, max_signals: int = 5):
         super().__init__()
@@ -31,6 +33,22 @@ class SignalSelector(QWidget):
         title_label = QLabel("Signal Selection")
         title_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title_label)
+        
+        # Graph count selection
+        graph_count_layout = QHBoxLayout()
+        graph_count_label = QLabel("Number of Graphs:")
+        graph_count_layout.addWidget(graph_count_label)
+        
+        self.graph_count_spinbox = QSpinBox()
+        self.graph_count_spinbox.setMinimum(1)
+        self.graph_count_spinbox.setMaximum(10)
+        self.graph_count_spinbox.setValue(1)  # Default 1 graph
+        self.graph_count_spinbox.setToolTip("Select number of graphs to display (1-10)")
+        self.graph_count_spinbox.valueChanged.connect(self.on_graph_count_changed)
+        graph_count_layout.addWidget(self.graph_count_spinbox)
+        graph_count_layout.addStretch()
+        
+        layout.addLayout(graph_count_layout)
         
         # Tree widget for messages and signals
         self.tree = QTreeWidget()
@@ -185,3 +203,26 @@ class SignalSelector(QWidget):
                             sig_item.setCheckState(0, Qt.Checked)
                             break
                     break
+    
+    def on_graph_count_changed(self, value: int):
+        """
+        Handle graph count change.
+        
+        Args:
+            value: New graph count value
+        """
+        self.graph_count_changed.emit(value)
+    
+    def get_graph_count(self) -> int:
+        """Get current graph count setting."""
+        return self.graph_count_spinbox.value()
+    
+    def set_graph_count(self, count: int):
+        """
+        Set graph count value.
+        
+        Args:
+            count: Graph count (1-10)
+        """
+        if 1 <= count <= 10:
+            self.graph_count_spinbox.setValue(count)

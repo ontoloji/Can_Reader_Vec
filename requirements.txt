@@ -1,0 +1,6 @@
+python-can>=4.2.0
+cantools>=39.4.0
+matplotlib>=3.7.0
+PyQt5>=5.15.9
+numpy>=1.24.0
+pyqtgraph>=0.13.0

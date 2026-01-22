@@ -53,7 +53,7 @@ class GraphPanel(QWidget):
         # Clear existing graphs
         for widget in self.plot_widgets:
             if widget:
-                self.splitter.removeWidget(widget)
+                widget.setParent(None)
                 widget.deleteLater()
         
         self.plot_widgets.clear()

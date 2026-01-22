@@ -61,7 +61,10 @@ class Workspace:
         dbc_path: str,
         selected_signals: list,
         view_range: Dict[str, float],
-        window_geometry: Dict[str, int]
+        window_geometry: Dict[str, int],
+        graph_count: int = 1,
+        dark_mode: bool = False,
+        cursor_positions: Optional[Dict[int, float]] = None
     ) -> Dict[str, Any]:
         """
         Create a workspace data dictionary.
@@ -72,14 +75,24 @@ class Workspace:
             selected_signals: List of selected signals
             view_range: Dictionary with x_min and x_max
             window_geometry: Dictionary with width and height
+            graph_count: Number of graphs displayed
+            dark_mode: Whether dark mode is enabled
+            cursor_positions: Dictionary of cursor positions
             
         Returns:
             Workspace data dictionary
         """
-        return {
+        workspace_data = {
             'blf_path': blf_path,
             'dbc_path': dbc_path,
             'selected_signals': selected_signals,
             'view_range': view_range,
-            'window_geometry': window_geometry
+            'window_geometry': window_geometry,
+            'graph_count': graph_count,
+            'dark_mode': dark_mode
         }
+        
+        if cursor_positions:
+            workspace_data['cursor_positions'] = cursor_positions
+        
+        return workspace_data

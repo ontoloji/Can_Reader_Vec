@@ -38,7 +38,7 @@ class PartialDataExporter:
             metadata.update({
                 'export_date': datetime.now().isoformat(),
                 'app_name': 'CAN Data Viewer',
-                'app_version': '1.0.0'
+                'app_version': '1.1.0'
             })
             
             # Build export data structure

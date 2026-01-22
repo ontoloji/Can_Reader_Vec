@@ -242,8 +242,6 @@ class GraphPanel(QWidget):
         """Clear all graphs."""
         for i in range(len(self.plot_widgets)):
             self.clear_graph(i)
-        for i in range(self.max_graphs):
-            self.clear_graph(i)
     
     def reset_zoom(self):
         """Reset zoom to show all data."""

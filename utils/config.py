@@ -22,7 +22,6 @@ GRAPH_COLORS = [
 EXPORT_FORMATS = {
     'PNG': '*.png',
     'JPEG': '*.jpg',
-    'PDF': '*.pdf',
     'SVG': '*.svg'
 }
 

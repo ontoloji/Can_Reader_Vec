@@ -19,8 +19,8 @@ class GraphExporter:
         Args:
             plot_widget: PyQtGraph PlotWidget to export
             filepath: Path to save the image
-            width: Image width in pixels
-            height: Image height in pixels
+            width: Image width in pixels (used for PNG/JPEG export)
+            height: Image height in pixels (used for PNG/JPEG export)
             
         Returns:
             True if successful, False otherwise
@@ -30,16 +30,14 @@ class GraphExporter:
             
             if file_ext in ['.png', '.jpg', '.jpeg']:
                 exporter = exporters.ImageExporter(plot_widget.plotItem)
-                exporter.parameters()['width'] = width
+                # Set both width and height parameters
+                params = exporter.parameters()
+                params['width'] = width
+                params['height'] = height
                 exporter.export(filepath)
             elif file_ext == '.svg':
                 exporter = exporters.SVGExporter(plot_widget.plotItem)
                 exporter.export(filepath)
-            elif file_ext == '.pdf':
-                # For PDF, we'll use SVG exporter and let the user convert
-                # or use matplotlib for PDF export
-                print("PDF export: Use SVG and convert manually or use matplotlib")
-                return False
             else:
                 print(f"Unsupported export format: {file_ext}")
                 return False

@@ -134,7 +134,7 @@ class GraphPanel(QWidget):
             plot_widget.autoRange()
     
     def fit_to_data(self):
-        """Fit view to data range."""
+        """Fit view to data range (alias for reset_zoom)."""
         self.reset_zoom()
     
     def get_view_range(self) -> Dict[str, float]:

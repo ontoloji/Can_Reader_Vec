@@ -49,12 +49,32 @@ class SignalProcessor:
         values = []
         
         # Decode each message and extract the signal
+        debug_count = 0
         for msg in blf_messages:
             try:
                 decoded = self.dbc_parser.decode_message(message.frame_id, msg['data'])
                 if decoded and signal_name in decoded:
+                    value = decoded[signal_name]
+                    
+                    # DEBUG: İlk 3 mesajda kontrol et
+                    if debug_count < 3:
+                        signal_obj = None
+                        for sig in message.signals:
+                            if sig.name == signal_name:
+                                signal_obj = sig
+                                break
+                        
+                        if signal_obj:
+                            print(f"\n=== DEBUG: {signal_name} ===")
+                            print(f"Raw value from decode: {value}")
+                            print(f"Scale: {signal_obj.scale}")
+                            print(f"Offset: {signal_obj.offset}")
+                            print(f"Expected: {(value * signal_obj.scale) + signal_obj.offset}")
+                        
+                        debug_count += 1
+                    
                     timestamps.append(msg['timestamp'])
-                    values.append(decoded[signal_name])
+                    values.append(value)
             except Exception as e:
                 # Skip messages that fail to decode
                 continue

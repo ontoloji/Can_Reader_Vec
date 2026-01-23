@@ -90,3 +90,36 @@ class BLFReader:
             'duration': self.end_time - self.start_time if self.messages else 0,
             'unique_ids': len(self.get_unique_message_ids())
         }
+    def get_raw_messages(self, max_messages=None):
+        """
+        Get raw messages in hexadecimal format without DBC decoding.
+        
+        Args:
+            max_messages: Maximum number of messages to return (None = all)
+            
+        Returns:
+            List of dictionaries with timestamp, ID, and hex data
+        """
+        if not self.messages:
+            return []
+        
+        raw_data = []
+        count = 0
+        
+        for msg in self.messages:
+            # Convert data to hex string
+            hex_data = ' '.join([f'{byte:02X}' for byte in msg['data']])
+            
+            raw_data.append({
+                'timestamp': msg['timestamp'],
+                'id': msg['arbitration_id'],
+                'id_hex': f"0x{msg['arbitration_id']:03X}",
+                'dlc': len(msg['data']),
+                'data_hex': hex_data
+            })
+            
+            count += 1
+            if max_messages and count >= max_messages:
+                break
+        
+        return raw_data
